@@ -6,4 +6,5 @@ ENV BASE_CONFIG_PATH=second-core
 CMD bash -c 'python3 -m homeassistant \
   --config "/config/${BASE_CONFIG_PATH}/config" \
   --media-dir "/config/${BASE_CONFIG_PATH}/media" \
-  --ssl "/config/${BASE_CONFIG_PATH}/ssl"'
+  --ssl "/config/${BASE_CONFIG_PATH}/ssl" \
+  --port 8124'
