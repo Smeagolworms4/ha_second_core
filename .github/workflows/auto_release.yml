@@ -1,0 +1,86 @@
+name: auto release
+
+# Vérifie la dernière version stable de Home Assistant Core et crée
+# automatiquement les tags + releases manquants (toutes les 4h).
+# Le tag est poussé avec un PAT (RELEASE_PAT) afin de déclencher build_images.yml
+# (un tag poussé par le GITHUB_TOKEN par défaut ne déclenche aucun workflow).
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0
+
+      - name: Check upstream HA Core and create missing releases
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          UPSTREAM_REPO: home-assistant/core
+        run: |
+          set -euo pipefail
+
+          # Dernière version déjà taguée dans le fork (0.0.0 si aucune)
+          git fetch --tags --quiet
+          CURRENT=$(git tag -l '[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)
+          CURRENT=${CURRENT:-0.0.0}
+          echo "Version courante du fork: $CURRENT"
+
+          # Releases stables upstream (exclut les pre-releases/beta)
+          UPSTREAM_VERSIONS=$(gh release list \
+            --repo "$UPSTREAM_REPO" \
+            --exclude-pre-releases \
+            --exclude-drafts \
+            --limit 100 \
+            --json tagName \
+            --jq '.[].tagName' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$')
+
+          # Versions strictement supérieures à la courante, dans l'ordre croissant
+          NEW_VERSIONS=$(for v in $UPSTREAM_VERSIONS; do
+            top=$(printf '%s\n%s\n' "$CURRENT" "$v" | sort -V | tail -n1)
+            if [ "$v" = "$top" ] && [ "$v" != "$CURRENT" ]; then
+              echo "$v"
+            fi
+          done | sort -V)
+
+          if [ -z "$NEW_VERSIONS" ]; then
+            echo "Aucune nouvelle version. Rien à faire."
+            exit 0
+          fi
+
+          echo "Nouvelles versions à publier:"
+          echo "$NEW_VERSIONS"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          for v in $NEW_VERSIONS; do
+            if git rev-parse "$v" >/dev/null 2>&1; then
+              echo "Tag $v existe déjà, on saute."
+              continue
+            fi
+
+            NOTES="Bump Home Assistant Core to $v
+
+Upstream release notes: https://github.com/${UPSTREAM_REPO}/releases/tag/$v"
+
+            echo "=== Création tag + release $v ==="
+            git tag -a "$v" -m "Home Assistant Core $v
+
+See: https://github.com/${UPSTREAM_REPO}/releases/tag/$v"
+            git push origin "$v"
+
+            printf '%s\n' "$NOTES" > notes.md
+            gh release create "$v" --title "$v" --notes-file notes.md
+          done
