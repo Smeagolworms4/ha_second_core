@@ -71,16 +71,11 @@ jobs:
               continue
             fi
 
-            NOTES="Bump Home Assistant Core to $v
-
-Upstream release notes: https://github.com/${UPSTREAM_REPO}/releases/tag/$v"
-
             echo "=== Création tag + release $v ==="
-            git tag -a "$v" -m "Home Assistant Core $v
-
-See: https://github.com/${UPSTREAM_REPO}/releases/tag/$v"
+            printf 'Bump Home Assistant Core to %s\n\nUpstream release notes: https://github.com/%s/releases/tag/%s\n' \
+              "$v" "$UPSTREAM_REPO" "$v" > notes.md
+            git tag -a "$v" -F <(printf 'Home Assistant Core %s\n\nSee: https://github.com/%s/releases/tag/%s\n' \
+              "$v" "$UPSTREAM_REPO" "$v")
             git push origin "$v"
-
-            printf '%s\n' "$NOTES" > notes.md
             gh release create "$v" --title "$v" --notes-file notes.md
           done
