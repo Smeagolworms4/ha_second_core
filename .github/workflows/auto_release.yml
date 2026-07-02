@@ -71,6 +71,19 @@ jobs:
               continue
             fi
 
+            # L'image de base ghcr.io/home-assistant/home-assistant:<v> est publiée
+            # avec un délai après la release GitHub. On ne crée le tag que si elle
+            # existe, sinon le build échoue. Réessai au prochain cron.
+            GHCR_TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:home-assistant/home-assistant:pull" | jq -r .token)
+            IMG_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $GHCR_TOKEN" \
+              -H "Accept: application/vnd.oci.image.index.v1+json" \
+              "https://ghcr.io/v2/home-assistant/home-assistant/manifests/$v")
+            if [ "$IMG_CODE" != "200" ]; then
+              echo "Image ghcr home-assistant:$v pas encore disponible (HTTP $IMG_CODE), report au prochain cron."
+              continue
+            fi
+
             echo "=== Création tag + release $v ==="
             printf 'Bump Home Assistant Core to %s\n\nUpstream release notes: https://github.com/%s/releases/tag/%s\n' \
               "$v" "$UPSTREAM_REPO" "$v" > notes.md
