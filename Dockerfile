@@ -2,18 +2,16 @@ ARG HA_TAG=stable
 FROM ghcr.io/home-assistant/home-assistant:${HA_TAG}
 
 ENV BASE_CONFIG_PATH=second-core
+# Port the second core listens on inside the container. Home Assistant 2026.8
+# moved the port into .storage/http and defaults to 80 under Supervisor, so it
+# is pinned instead of being left to the core's default.
+ENV PORT=8124
+# Realign the stored port on every start, so an already installed second core
+# behaves like a new one. Set to false to manage the port from the second
+# core UI (Settings > System > Network).
+ENV FORCE_PORT=true
 
-CMD bash -c '\
-  mkdir -p /share/${BASE_CONFIG_PATH} && \
-  rmdir /config && \
-  ln -s /share/${BASE_CONFIG_PATH} /config && \
-  cd /config && \
-  if [ ! -f /config/configuration.yaml ]; then \
-    echo -e "default_config:\n\nhttp:\n  server_port: 8124\n  use_x_forwarded_for: true\n  trusted_proxies:\n    - 10.0.0.0/8\n    - 192.0.0.0/8\n    - 172.0.0.0/8\n    - 127.0.0.0/24" > /config/configuration.yaml; \
-    echo "✅ configuration.yaml generated"; \
-  else \
-    echo "✅ configuration.yaml already exist."; \
-  fi && \
-  echo "Start Home-Assitant." && \
-  python3 -m homeassistant --ignore-os-check --config /config\
-'
+COPY entrypoint.sh bootstrap.py /usr/src/second_core/
+RUN chmod +x /usr/src/second_core/entrypoint.sh
+
+CMD ["/usr/src/second_core/entrypoint.sh"]
